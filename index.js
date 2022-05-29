@@ -1,7 +1,7 @@
 'use strict'
 const noble = require('@abandonware/noble')
 const crypto = require('crypto')
-const { UInt16, UInt32, MiDate } = require('./helpers')
+const { UInt16, UInt32, MiDate, parseActivity } = require('./helpers')
 
 const DEBUG = false
 
@@ -141,8 +141,10 @@ class MiBand {
     await this.writeAndListen('0009', [0x01, 0x00], (data) => {
       const cmd = data.toString('hex', 0, 3)
       if (cmd === '100104') {
+        // 0x01 0x00 0x1a (pair?)
         return [0x02, 0x08]
       } else if (cmd === '100101') {
+        // 0x02 0x00 0x02 (the same?)
         // request random number
         return [0x02, 0x08]
       } else if(cmd === '100201') {
@@ -202,6 +204,7 @@ class MiBand {
   }
 
   async getPulse () {
+    // 0x15 0x03 0x00 ?
     // await this. write('2a39', [0x15, 0x01, 0x00])
     await this. write('2a39', [0x15, 0x02, 0x01])
     const response = await this.waitNotify('2a37', 20000)
@@ -227,8 +230,7 @@ class MiBand {
   }
 
   async setDateFormat (format) {
-    // MM/dd/yyyy
-    // dd.MM.yyyy
+    // format: MM/dd/yyyy, dd.MM.yyyy
     await this.write('0003', [0x06, 0x1e, 0x00], format, [0x00])
   }
 
@@ -258,7 +260,7 @@ class MiBand {
   }
 
   async setEvent (datetime, title, slot = 0, rhythm = 0x00) {
-    // rhythm: 0x00 once, 0x01 weekly tomorrow, 0x02 weekly when day after tomorrow, ..., 0x40 weekly when today, 0x80 monthly, 0x100 yearly, 0x7f daily (sum of all single days), -1 weekly automatically calculate weekday-shift
+    // rhythm: 0x00 once, 0x01 Monday, 0x02 Tuesday, 0x04 Wednesday, ..., 0x80 monthly, 0x100 yearly, 0x7f daily (sum of all single days), -1 weekly automatic weekday
     if (!datetime || !title) {
       // delete
       await this.sendChunkedData(2, [0x0b, slot, 0x00, 0x00, 0x00, 0x00])
@@ -267,10 +269,10 @@ class MiBand {
     datetime = datetime instanceof MiDate ? datetime : new MiDate(datetime, this.timeZone)
     if (rhythm === -1) {
       // weekly, but calculate weekday automatically
-      rhythm = 1 << ((new MiDate(null, datetime.minuteOffset).getDayOfWeek() - datetime.getDayOfWeek() + 6) % 7)
+      rhythm = 1 << ((datetime.getDayOfWeek() + 6) % 7)
     }
     await this.sendChunkedData(2,
-      [0x0b, slot, 0x09 + ((rhythm & 0x70) << 1), (rhythm & 0x0f) + ((rhythm & 0x180) >> 3), 0x00, 0x00], datetime.toBuffer('YmdHis'), title, [0x00]
+      [0x0b, slot], UInt16(0x09 + (rhythm << 5)), [0x00, 0x00], datetime.toBuffer('YmdHis'), title, [0x00]
     )
   }
 
@@ -428,7 +430,7 @@ class MiBand {
     await this.sendSuntimes(time, data.sunTimes)
   }
 
-  async getActivity (next = null) {
+  async getActivityRaw (next = null) {
     const collection = []
     let res
     if (!next) {
@@ -470,6 +472,14 @@ class MiBand {
     }
     await this.write('0004', [0x03])
     return collection
+  }
+
+  async getActivity (date = null, fields = null) {
+    if (!date) {
+      date = new Date(Date.now() - 864e5)
+    }
+    const raw = await this.getActivityRaw(date)
+    return parseActivity(raw, date, fields)
   }
 
   async getLiveAcceleration (callback, minutes = .5) {

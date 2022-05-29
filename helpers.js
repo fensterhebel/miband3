@@ -90,7 +90,6 @@ class MiDate {
         // default: return arr.push(d.charCodeAt(0))
       }
     })
-    if (DEBUG) console.log('date:', arr)
     return Buffer.from(arr)
   }
 
