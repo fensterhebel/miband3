@@ -2,7 +2,12 @@
   "name": "miband3",
   "version": "0.9.0",
   "description": "A more extensive library for the Mi Band 3 and above",
-  "main": "index.js",
+  "author": "Lukas Bröcker <parkettkosmetikerin@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fensterhebel/miband3"
+  },
+  "main": "src/index.js",
   "dependencies": {
     "@abandonware/noble": "^1.9.2-15"
   }
