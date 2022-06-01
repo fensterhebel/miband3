@@ -66,15 +66,15 @@ class OpenWeatherMap {
       lat, lon, exclude: 'minutely,hourly'
     })
     return {
-      lat, lon, lang, units,
+      lat, lon, lang: this.lang, units: this.units,
       time: new Date(current.dt * 1000),
       sunTimes: [new Date(current.sunrise * 1000), new Date(current.sunset * 1000)],
       temperature: Math.round(current.temp),
       icon: miIcon(current.weather[0]),
-      summary: shortText(current, lang),
+      summary: shortText(current, this.lang),
       forecast: daily.slice(0, 5).map((day) => ({
         icon: miIcon(day.weather[0]),
-        summary: shortText(day, lang),
+        summary: shortText(day, this.lang),
         temperatureMin: Math.round(day.temp.min),
         temperatureMax: Math.round(day.temp.max)
       }))

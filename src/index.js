@@ -167,6 +167,16 @@ class MiBand {
     return this
   }
 
+  async getInfo () {
+    return {
+      softwareRevision: (await this.read('2a28')).toString(),
+      hardwareRevision: (await this.read('2a27')).toString(),
+      serialNumber: (await this.read('2a25')).toString(),
+      systemId: (await this.read('2a23')).toString('hex'),
+      pnpId: (await this.read('2a50')).toString('hex')
+    }
+  }
+
   async getLocalTime (asMiDate = false) {
     const time = await this.read('current_time')
     if (DEBUG) console.log('getting time:', new MiDate(time).toString())
@@ -276,12 +286,44 @@ class MiBand {
     )
   }
 
+  async setInactivityWarning (start, end, pauseStart, pauseEnd) {
+    const times = []
+    if (end) {
+      start = start instanceof MiDate ? start : new MiDate(start, this.timeZone)
+      end = end instanceof MiDate ? end : new MiDate(end, this.timeZone)
+      times.push(start.toBuffer('Hi'), end.toBuffer('Hi'))
+    } else {
+      times.push([0x00, 0x00, 0x00, 0x00])
+    }
+    if (pauseEnd) {
+      pauseStart = pauseStart instanceof MiDate ? pauseStart : new MiDate(pauseStart, this.timeZone)
+      pauseEnd = pauseEnd instanceof MiDate ? pauseEnd : new MiDate(pauseEnd, this.timeZone)
+      times.splice(1, 0, pauseStart.toBuffer('Hi'), pauseEnd.toBuffer('Hi'))
+    } else {
+      times.push([0x00, 0x00, 0x00, 0x00])
+    }
+    await this.write('0003', [0x08, +!!start, 0x3c, 0x00], ...times)
+  }
+
+  async setDontDisturbMode () {
+    // ToDo
+    // await this.write('0003', [0x09])
+  }
+
   async setScreenLock (yesno) {
     await this.write('0003', [0x06, 0x16, 0x00, +!!yesno])
   }
 
   async setVisibility (yesno) {
     await this.write('0003', [0x06, 0x01, 0x00, +!!yesno])
+  }
+
+  async setAllowNearbyPulseRead (yesno) {
+    await this.write('0003', [0x06, 0x1f, 0x00, +!!yesno])
+  }
+
+  async setDisableNewPairing (yesno) {
+    await this.write('0003', [0x06, 0x20, 0x00, +!!yesno])
   }
 
   async setNightMode (start, end) {
@@ -315,7 +357,7 @@ class MiBand {
     // E training (exercise)
     // M more
     // S status
-    // P pulse
+    // H heartbeat
     // T timer
     if (!order.includes('C')) {
       order = 'C' + order
@@ -324,7 +366,7 @@ class MiBand {
     }
     let menu = []
     let mask = ''
-    for (const item of 'CNWEMSPT') {
+    for (const item of 'CNWEMSHT') {
       let p = order.toUpperCase().indexOf(item)
       if (p < 0) {
         p = order.length
@@ -334,6 +376,10 @@ class MiBand {
       mask = +order.includes(item) + mask
     }
     await this.write('0003', [0x0a, parseInt(mask, 2), 0x30], menu)
+  }
+
+  async setWearingSide (isRightSide) {
+    await this.write('0008', [0x20, 0x00, 0x00, 0x02 + 0x80 * +!!isRightSide])
   }
 
   async sendChunkedData (channel, ...value) {
@@ -428,6 +474,37 @@ class MiBand {
     await this.sendWeatherForecast(time, data.forecast)
     await this.sendWeatherCurrent(time, data)
     await this.sendSuntimes(time, data.sunTimes)
+  }
+
+  async sendWeatherAlert (message, heading = '') {
+    await this.sendChunkedData(0, [0xfa, 0x01, 0x23], heading, [0x00], message, [0x00, 0x00])
+  }
+
+  async sendSilentMode (yesno) {
+    await this.write('0003', [0x06, 0x19, 0x00, +!!yesno])
+  }
+
+  async onSilentModeToggle (callback) {
+    const channel = band.char('0010')
+    await channel.subscribeAsync()
+    const onData = (data) => {
+      if (data[0] !== 0x10) return
+      const res = callback(!!data[1])
+      if (res instanceof Promise) {
+        res.then((r) => {
+          if (r === false) {
+            channel.removeListener('data', onData)
+          }
+          band.write('0003', [0x06, 0x19, 0x00, data[1]])
+        })
+        return
+      }
+      if (res === false) {
+        channel.removeListener('data', onData)
+      }
+      band.write('0003', [0x06, 0x19, 0x00, data[1]])
+    }
+    channel.on('data', onData)
   }
 
   async getActivityRaw (next = null) {
