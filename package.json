@@ -1,6 +1,6 @@
 {
   "name": "miband3",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "A more extensive library for the Mi Band 3 and above",
   "author": "Lukas Bröcker <parkettkosmetikerin@gmail.com>",
   "repository": {
