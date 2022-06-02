@@ -201,7 +201,7 @@ class MiBand {
 
   async getBattery () {
     const response = await this.read('0006')
-    console.log(response)
+    if (DEBUG) console.log(response)
     return {
       level: response[1],
       charging: !!response[2],
@@ -218,10 +218,10 @@ class MiBand {
 
   async getPulse () {
     // 0x15 0x03 0x00 ?
-    // await this. write('2a39', [0x15, 0x01, 0x00])
-    await this. write('2a39', [0x15, 0x02, 0x01])
+    // await this.write('2a39', [0x15, 0x01, 0x00])
+    await this.write('2a39', [0x15, 0x02, 0x01])
     const response = await this.waitNotify('2a37', 20000)
-    await this. write('2a39', [0x15, 0x02, 0x00])
+    await this.write('2a39', [0x15, 0x02, 0x00])
     if (response[0] !== 0x00) {
       return false
     }
@@ -528,13 +528,13 @@ class MiBand {
         break
       }
       const start = new MiDate(res.slice(7))
-      const count = res.readUInt16LE(3)
-      if (!count) {
+      const minutes = res.readUInt16LE(3)
+      if (!minutes) {
         if (start.equals(next)) break
         next = start
         continue
       }
-      const buffer = Buffer.alloc(count * 4)
+      const buffer = Buffer.alloc(minutes * 4)
       let pos = 0
       const onData = (data) => {
         data.slice(1).copy(buffer, pos * 4)
@@ -547,8 +547,8 @@ class MiBand {
         console.error('error:', data)
         break
       }
-      next = start.clone().addMinutes(count)
-      collection.push({ date: start.getDate(), next: next.getDate(), count, buffer })
+      next = start.clone().addMinutes(minutes)
+      collection.push({ date: start.getDate(), next: next.getDate(), minutes, buffer })
     }
     await this.write('0004', [0x03])
     return collection
@@ -556,10 +556,31 @@ class MiBand {
 
   async getActivity (date = null, fields = null) {
     if (!date) {
-      date = new Date(Date.now() - 864e5)
+      date = new Date(Date.now() - 864e5) // 24 hours before now
     }
-    const raw = await this.getActivityRaw(date)
-    return parseActivity(raw, date, fields)
+    const rawCollection = await this.getActivityRaw(date)
+    const collection = rawCollection.map(data => parseActivity(data.buffer, data.date, fields))
+    return [].concat(...collection)
+  }
+
+  async getLivePulse (callback, minutes = .5) {
+    const dataChannel = this.char('2a37')
+    await dataChannel.subscribeAsync()
+    const onData = (data) => {
+      if (data[0] !== 0x00) {
+        return false
+      }
+      callback(data[1])
+    }
+    dataChannel.on('data', onData)
+    await this.write('2a39', [0x15, 0x01, 0x01])
+    for (let c = 0; c < minutes * 4; c++) {
+      await this.write('2a39', [0x16])
+      await delay(15e3)
+    }
+    await this.write('2a39', [0x15, 0x01, 0x00])
+    await delay(500)
+    dataChannel.removeListener('data', onData)
   }
 
   async getLiveAcceleration (callback, minutes = .5) {
@@ -588,7 +609,7 @@ class MiBand {
     for (let c = 0; c < minutes * 2; c++) {
       await this.write('0001', [0x01, 0x01, 0x19])
       await this.write('0001', [0x02])
-      await delay(30000)
+      await delay(30e3)
     }
     await this.write('0001', [0x03])
     await delay(500)

@@ -1,6 +1,9 @@
 const fs = require('fs')
 const { MiDate, parseActivity } = require('./helpers')
 
+const date2file = date => date.toISOString().replace(/\D/g, '-').substr(0, 16)
+const file2date = sort => Date.UTC(.../(\d{4})-(\d\d)-(\d\d)-(\d\d)-(\d\d)/.exec(sort).slice(1).map((n, i) => +n - (i === 1)))
+
 class ActivityTrackerDB {
   static reduceDataArray (data) {
     let last = null
@@ -11,7 +14,7 @@ class ActivityTrackerDB {
       }
       Object.assign(last, {
         buffer: Buffer.concat([last.buffer, data[i].buffer]),
-        count: last.count + data[i].count,
+        minutes: last.minutes + data[i].minutes,
         next: data[i].next
       })
       data.splice(i, 1)
@@ -20,9 +23,10 @@ class ActivityTrackerDB {
     return data
   }
 
-  constructor (dir = 'data', suffix = '.bin') {
+  constructor (dir = 'data', suffix = '.bin', maxFileMinutes = 2 ** 15) {
     this.dir = dir.replace(/[\/\\]*$/, '/')
     this.suffix = suffix
+    this.maxFileMinutes = maxFileMinutes
   }
 
   saveData (data) {
@@ -32,7 +36,16 @@ class ActivityTrackerDB {
       }
       return
     }
-    const date = data.date.toISOString().replace(/\D/g, '-').substr(0, 16)
+    const chunks = this.getChunks()
+    const best = chunks.find(chunk => chunk.next.getTime() >= data.date.getTime())
+    if (best) {
+      const overlap = (best.next.getTime() - data.date.getTime()) / 6e4
+      if (best.minutes + data.minutes - overlap <= this.maxFileMinutes) {
+        fs.appendFileSync(best.path, data.buffer.slice(overlap * 4))
+        return
+      }
+    }
+    const date = date2file(data.date)
     const file = this.dir + date + this.suffix
     fs.writeFileSync(file, data.buffer)
   }
@@ -40,7 +53,7 @@ class ActivityTrackerDB {
   getChunks () {
     const files = fs.readdirSync(this.dir).filter(file => file.endsWith(this.suffix)).sort()
     return files.map((file) => {
-      const timestamp = Date.UTC(.../(\d{4})-(\d\d)-(\d\d)-(\d\d)-(\d\d)/.exec(file).slice(1).map((n, i) => +n - (i === 1)))
+      const timestamp = file2date(file)
       const minutes = fs.statSync(this.dir + file).size / 4
       return {
         path: this.dir + file,
@@ -58,7 +71,7 @@ class ActivityTrackerDB {
     const data = Buffer.alloc(minutes * 4)
     for (const file of files) {
       if (file.date < end && file.next > date) {
-        const pos = (date - file.date) / 6e4
+        const pos = Math.floor((date - file.date) / 6e4)
         const source = fs.readFileSync(file.path)
         source.copy(data, Math.max(-pos, 0) * 4, Math.max(pos, 0) * 4, Math.min(minutes + pos, source.length / 4) * 4)
       }
