@@ -61,12 +61,12 @@ class OpenWeatherMap {
     return GET(baseUrl + '?' + Object.keys(params).map(key => key + '=' + encodeURIComponent(params[key])).join('&')).then(raw => JSON.parse(raw))
   }
 
-  async getWeather ({ lon, lat }) {
+  async getWeather ({ place, lon, lat }) {
     const { current, daily } = await this.request('onecall', {
       lat, lon, exclude: 'minutely,hourly'
     })
     return {
-      lat, lon, lang: this.lang, units: this.units,
+      place, lat, lon, lang: this.lang, units: this.units,
       time: new Date(current.dt * 1000),
       sunTimes: [new Date(current.sunrise * 1000), new Date(current.sunset * 1000)],
       temperature: Math.round(current.temp),

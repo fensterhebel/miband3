@@ -3,6 +3,9 @@ const noble = require('@abandonware/noble')
 const crypto = require('crypto')
 const { UInt16, UInt32, MiDate, parseActivity } = require('./helpers')
 
+const OpenWeatherMap = require('./openweathermap')
+const TrackerDB = require('./trackerdb')
+
 const DEBUG = false
 
 const END = -1
@@ -468,7 +471,7 @@ class MiBand {
   }
 
   async sendWeather (data) {
-    const time = new MiDate(data.time, this.timeZone) // timezone from weather place?
+    const time = new MiDate(data.time, data.timeZone || this.timeZone) // timezone from weather place?
     await this.sendPlace(data.place || this.place)
     await this.sendTime(time)
     await this.sendWeatherForecast(time, data.forecast)
@@ -597,4 +600,7 @@ class MiBand {
   }
 }
 
-module.exports = { MiBand, MiDate, UInt16, UInt32, concat, delay }
+module.exports = {
+  MiBand, MiDate, UInt16, UInt32, concat, delay,
+  OpenWeatherMap, TrackerDB
+}
